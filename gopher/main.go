@@ -5,7 +5,7 @@ import (
 )
 
 func FetchData(path string) ([]byte, error) {
-	res, err := gopher.Get(path)
+	res, err := gopher.Get("gopher://"+path)
 	if err != nil {
 		return []byte(""), err
 	}
@@ -15,5 +15,5 @@ func FetchData(path string) ([]byte, error) {
 		return []byte(""), err
 	}
 
-	return []byte(txt), nil
+	return txt, nil
 }

@@ -73,7 +73,7 @@ func (Root) Attr(ctx context.Context, a *fuse.Attr) error {
 
 
 func (Root) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	return Path{FullPath: name}, nil
+	return newPath(name), nil
 }
 
 

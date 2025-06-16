@@ -8,6 +8,7 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"bazil.org/fuse/fuseutil"
 
 	"gopherrfs/gopher"
 )
@@ -15,7 +16,7 @@ import (
 
 type Entry struct {
 	Contents []byte
-	Ttl int64
+	TTL int64
 	Status int
 	Using int
 }
@@ -51,7 +52,7 @@ func (p Path) Attr(ctx context.Context, a *fuse.Attr) error {
 		a.Mode = os.ModeIrregular | 0o770
 		a.Size = uint64(len(entry.Contents))
 
-		entry.Ttl = DefaultTTL
+		entry.TTL = DefaultTTL
 		entry.Using -= 1
 
 	// Directory
@@ -64,18 +65,60 @@ func (p Path) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 
-func (p Path) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	newPath := filepath.Join(p.FullPath, name)
-	if name[len(name)-1] == ':' {
-		handleEntry(newPath)
+func (p Path) ReadAll(ctx context.Context) ([]byte, error) {
+	entry, ok := Entries[p.FullPath]
+	if !ok {
+		return nil, fuse.ENOENT
 	}
 
-	return Path{FullPath: newPath}, nil
+	entry.Using += 1
+	for entry.Status == EntryStatusProcessing {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	entry.TTL = DefaultTTL
+	entry.Using -= 1
+	return entry.Contents, nil
+}
+
+
+func (p Path) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	entry, ok := Entries[p.FullPath]
+	if !ok {
+		return fuse.ENOENT
+	}
+
+	for entry.Status == EntryStatusProcessing {
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	entry.Using += 1
+
+	fuseutil.HandleRead(req, resp, entry.Contents)
+
+	entry.TTL = DefaultTTL
+	entry.Using -= 1
+
+	return nil
 }
 
 
 func (Path) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	return []fuse.Dirent{}, nil
+}
+
+
+func (p Path) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	return newPath(filepath.Join(p.FullPath, name)), nil
+}
+
+
+func newPath(path string) Path {
+	if path[len(path)-1] == ':' {
+		handleEntry(path)
+	}
+
+	return Path{FullPath: path}
 }
 
 
@@ -85,7 +128,7 @@ func handleEntry(path string) {
 	if !ok {
 		Entries[path] = &Entry{
 			Contents: []byte{},
-			Ttl: DefaultTTL,
+			TTL: DefaultTTL,
 			Status: EntryStatusProcessing,
 			Using: 0,
 		}
@@ -93,7 +136,7 @@ func handleEntry(path string) {
 		go fillEntry(Entries[path], path)
 
 	} else {
-		entry.Ttl = DefaultTTL
+		entry.TTL = DefaultTTL
 	}
 }
 
