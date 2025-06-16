@@ -1,7 +1,6 @@
 package fs
 
 import (
-	"fmt"
 	"path/filepath"
 	"context"
 	"time"
@@ -39,28 +38,37 @@ var (
 
 
 func (p Path) Attr(ctx context.Context, a *fuse.Attr) error {
-	fmt.Println("Resolving path:", p.FullPath)
-	entry := Entries[p.FullPath]
-	entry.Using += 1
+	entry, ok := Entries[p.FullPath]
+	// File
+	if ok { 
+		entry.Using += 1
 
-	for entry.Status == EntryStatusProcessing {
-		time.Sleep(10 * time.Millisecond)
+		for entry.Status == EntryStatusProcessing {
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		a.Inode = 1
+		a.Mode = os.ModeIrregular | 0o770
+		a.Size = uint64(len(entry.Contents))
+
+		entry.Ttl = DefaultTTL
+		entry.Using -= 1
+
+	// Directory
+	} else {
+		a.Inode = 1
+		a.Mode = os.ModeDir | 0o770
 	}
 
-	a.Inode = 1
-	a.Mode = os.ModeIrregular | 0o774
-	a.Size = uint64(len(entry.Contents))
-
-	entry.Ttl = DefaultTTL
-	entry.Using -= 1
 	return nil
 }
 
 
 func (p Path) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	fmt.Println("Looking up:", name)
 	newPath := filepath.Join(p.FullPath, name)
-	handleEntry(newPath)
+	if name[len(name)-1] == ':' {
+		handleEntry(newPath)
+	}
 
 	return Path{FullPath: newPath}, nil
 }
@@ -91,7 +99,7 @@ func handleEntry(path string) {
 
 
 func fillEntry(entry *Entry, path string) {
-	data, err := gopher.FetchData(path)
+	data, err := gopher.FetchData(path[:len(path)-1]) // Remove trailing colon
 	if err != nil {
 		entry.Status = EntryStatusFailed
 		return

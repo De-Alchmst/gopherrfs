@@ -1,9 +1,10 @@
 package fs
 
 import (
-	"fmt"
 	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -37,12 +38,23 @@ func MountFS(mountpoint string) error {
 		return err
 	}
 
-	defer c.Close()
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	
+	// Start serving in a goroutine
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- fs.Serve(c, FS{})
+	}()
 
-	err = fs.Serve(c, FS{})
-	if err != nil {
-		return err
+	select {
+		case <-serveDone:
+		case <-sigChan:
 	}
+	
+	err = fuse.Unmount(mountpoint)
+	c.Close()
 
 	return nil
 }
@@ -61,8 +73,6 @@ func (Root) Attr(ctx context.Context, a *fuse.Attr) error {
 
 
 func (Root) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	fmt.Println("Looking up:", name)
-	handleEntry(name)
 	return Path{FullPath: name}, nil
 }
 
