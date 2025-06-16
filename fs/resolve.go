@@ -1,44 +1,102 @@
 package fs
 
 import (
+	"fmt"
+	"path/filepath"
 	"context"
+	"time"
 	"os"
-	"syscall"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+
+	"gopherrfs/gopher"
 )
 
-func (Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = 1
-	a.Mode = os.ModeDir | 0o555
-	return nil
+
+type Entry struct {
+	Contents []byte
+	Ttl int64
+	Status int
+	Using int
 }
 
-func (Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	if name == "hello" {
-		return File{}, nil
+
+const (
+	EntryStatusOK = iota
+	EntryStatusFailed
+	EntryStatusProcessing
+)
+
+const (
+	DefaultTTL = 60 * 60
+)
+
+
+var (
+	Entries = map[string]*Entry{}
+)
+
+
+func (p Path) Attr(ctx context.Context, a *fuse.Attr) error {
+	fmt.Println("Resolving path:", p.FullPath)
+	entry := Entries[p.FullPath]
+	entry.Using += 1
+
+	for entry.Status == EntryStatusProcessing {
+		time.Sleep(10 * time.Millisecond)
 	}
-	return nil, syscall.ENOENT
-}
 
-var dirDirs = []fuse.Dirent{
-	{Inode: 2, Name: "hello", Type: fuse.DT_File},
-}
+	a.Inode = 1
+	a.Mode = os.ModeIrregular | 0o774
+	a.Size = uint64(len(entry.Contents))
 
-func (Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	return dirDirs, nil
-}
-
-const greeting = "hello, world\n"
-
-func (File) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = 2
-	a.Mode = 0o444
-	a.Size = uint64(len(greeting))
+	entry.Ttl = DefaultTTL
+	entry.Using -= 1
 	return nil
 }
 
-func (File) ReadAll(ctx context.Context) ([]byte, error) {
-	return []byte(greeting), nil
+
+func (p Path) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	fmt.Println("Looking up:", name)
+	newPath := filepath.Join(p.FullPath, name)
+	handleEntry(newPath)
+
+	return Path{FullPath: newPath}, nil
+}
+
+
+func (Path) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	return []fuse.Dirent{}, nil
+}
+
+
+func handleEntry(path string) {
+	entry, ok := Entries[path]
+
+	if !ok {
+		Entries[path] = &Entry{
+			Contents: []byte{},
+			Ttl: DefaultTTL,
+			Status: EntryStatusProcessing,
+			Using: 0,
+		}
+
+		go fillEntry(Entries[path], path)
+
+	} else {
+		entry.Ttl = DefaultTTL
+	}
+}
+
+
+func fillEntry(entry *Entry, path string) {
+	data, err := gopher.FetchData(path)
+	if err != nil {
+		entry.Status = EntryStatusFailed
+		return
+	}
+
+	entry.Contents = data
+	entry.Status = EntryStatusOK
 }
