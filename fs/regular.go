@@ -84,8 +84,17 @@ func (f File) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 
-func (f File) ReadAll(ctx context.Context) ([]byte, error) {
-	contents, err := f.OnRead()
+func (f File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	return fileHandle{
+		Parent:	  &f,
+		Inode:    f.Inode,
+		Contents: []byte{},
+	}, nil
+}
+
+
+func (h fileHandle) ReadAll(ctx context.Context) ([]byte, error) {
+	contents, err := h.Parent.OnRead()
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +102,8 @@ func (f File) ReadAll(ctx context.Context) ([]byte, error) {
 }
 
 
-func (f File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	contents, err := f.OnRead()
+func (h fileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	contents, err := h.Parent.OnRead()
 	if err != nil {
 		return err
 	}
@@ -102,3 +111,5 @@ func (f File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadRe
 	fuseutil.HandleRead(req, resp, contents)
 	return nil
 }
+
+

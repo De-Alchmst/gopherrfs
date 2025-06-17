@@ -33,6 +33,12 @@ type path struct {
 	FullPath string
 }
 
+type fileHandle struct {
+	Parent *File
+	Inode uint64
+	Contents []byte
+}
+
 type DirNode interface {
 	fs.Node
 	GetDirEnt() fuse.Dirent
@@ -55,23 +61,6 @@ var (
 				},
 				OnRead: func() ([]byte, error) {
 					return []byte("write stuff to flush cache\n"), nil
-				},
-			},
-			&Dir{
-				Inode: 2,
-				Name: "ext",
-				Contents: []DirNode{
-					&File{
-						Inode: 3,
-						Name: "gopher",
-						OnWrite: func(data []byte) error {
-							fmt.Println("Writing to gopher file:", string(data))
-							return nil
-						},
-						OnRead: func() ([]byte, error) {
-							return []byte("Gopher content\n"), nil
-						},
-					},
 				},
 			},
 		},
