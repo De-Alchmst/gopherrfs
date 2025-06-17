@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"gopherrfs/rfs"
+	"github.com/de-alchmst/rfs"
 )
 
 
