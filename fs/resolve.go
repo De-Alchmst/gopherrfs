@@ -55,7 +55,7 @@ func (p path) Attr(ctx context.Context, a *fuse.Attr) error {
 	// Directory
 	} else {
 		a.Inode = 1
-		a.Mode = os.ModeDir | 0o770
+		a.Mode = os.ModeDir | 0o777
 	}
 
 	return nil

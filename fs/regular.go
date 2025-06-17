@@ -7,46 +7,98 @@ import (
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
+	"bazil.org/fuse/fuseutil"
 )
 
 
-func (Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	a.Inode = 1
-	a.Mode = os.ModeDir | 0o550
+func (d Dir) Attr(ctx context.Context, a *fuse.Attr) error {
+	a.Inode = d.Inode
+	a.Mode = os.ModeDir | 0o777
 	return nil
 }
 
-func (Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	if name == "hello" {
-		return File{}, nil
+
+func (d Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	for _, ent := range d.Contents {
+		if ent.GetName() == name {
+			return ent, nil
+		}
 	}
+
 	return nil, syscall.ENOENT
 }
 
-var dirDirs = []fuse.Dirent{
-	{Inode: 2, Name: "hello", Type: fuse.DT_File},
+
+func (d Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+	dirents := make([]fuse.Dirent, len(d.Contents))
+	for i, ent := range d.Contents {
+		dirents[i] = ent.GetDirEnt()
+	}
+
+	return dirents, nil
 }
 
-func (Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	return dirDirs, nil
+
+func (d Dir) GetDirEnt() fuse.Dirent {
+	return fuse.Dirent{
+		Inode: d.Inode,
+		Name:  d.Name,
+		Type:  fuse.DT_Dir,
+	}
 }
 
-const greeting = "hello, world\n"
 
-func (File) Attr(ctx context.Context, a *fuse.Attr) error {
+func (d Dir) GetName() string {
+	return d.Name
+}
+
+
+func (f File) GetDirEnt() fuse.Dirent {
+	return fuse.Dirent{
+		Inode: f.Inode,
+		Name:  f.Name,
+		Type:  fuse.DT_File,
+	}
+}
+
+
+func (f File) GetName() string {
+	return f.Name
+}
+
+
+func (f File) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = 2
-	a.Mode = 0o440
-	a.Size = uint64(len(greeting))
+	a.Mode = 0o666
+
+	contents, err := f.OnRead()
+	var length uint64
+	if err == nil {
+		length = uint64(len(contents))
+	} else {
+		length = 0
+	}
+
+	a.Size = length
 	return nil
 }
 
-func (File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
-	resp.Attr.Inode = 2
-	resp.Attr.Mode = os.ModeDir | 0o444
-	resp.Attr.Size = uint64(len(greeting))
-	return nil
+
+func (f File) ReadAll(ctx context.Context) ([]byte, error) {
+	contents, err := f.OnRead()
+	if err != nil {
+		return nil, err
+	}
+	return contents, nil
 }
 
-func (File) ReadAll(ctx context.Context) ([]byte, error) {
-	return []byte(greeting), nil
+
+func (f File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	contents, err := f.OnRead()
+	if err != nil {
+		return err
+	}
+
+	fuseutil.HandleRead(req, resp, contents)
+	return nil
 }

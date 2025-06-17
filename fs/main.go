@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"context"
 	"os"
 	"os/signal"
@@ -17,26 +18,64 @@ type root struct{}
 type Dir struct{
 	Inode uint64
 	Name string
-	Type fuse.DirentType
 
-	Contents []fs.Node
+	Contents []DirNode
 }
 type File struct{
 	Inode uint64
 	Name string
-	Type fuse.DirentType
 
-	Writer func([]byte) error
-	Reader func() ([]byte, error)
+	OnWrite func([]byte) error
+	OnRead  func() ([]byte, error)
 }
 // used for resolving
 type path struct {
 	FullPath string
 }
 
+type DirNode interface {
+	fs.Node
+	GetDirEnt() fuse.Dirent
+	GetName() string
+}
+
 
 var (
 	rootDir = root{}
+	confDir  = &Dir{
+		Inode: 0,
+		Name: ":c",
+		Contents: []DirNode{
+			&File{
+				Inode: 1,
+				Name: "flush",
+				OnWrite: func(data []byte) error {
+					fmt.Println("Flushing entries...")
+					return nil
+				},
+				OnRead: func() ([]byte, error) {
+					return []byte("write stuff to flush cache\n"), nil
+				},
+			},
+			&Dir{
+				Inode: 2,
+				Name: "ext",
+				Contents: []DirNode{
+					&File{
+						Inode: 3,
+						Name: "gopher",
+						OnWrite: func(data []byte) error {
+							fmt.Println("Writing to gopher file:", string(data))
+							return nil
+						},
+						OnRead: func() ([]byte, error) {
+							return []byte("Gopher content\n"), nil
+						},
+					},
+				},
+			},
+		},
+	}
 )
 
 
@@ -86,10 +125,13 @@ func (root) Attr(ctx context.Context, a *fuse.Attr) error {
 
 
 func (root) Lookup(ctx context.Context, name string) (fs.Node, error) {
+	if name == ":c" {
+		return confDir, nil
+	}
 	return newPath(name), nil
 }
 
 
 func (root) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
-	return []fuse.Dirent{}, nil
+	return []fuse.Dirent{confDir.GetDirEnt()}, nil
 }
