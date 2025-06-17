@@ -26,7 +26,7 @@ func main() {
 	}
 	mountpoint := flag.Arg(0)
 
-	err := fs.MountFS(mountpoint)
+	err := fs.MountFS(mountpoint, "gopherrfs", "gopherrfs")
 
 	if err != nil {
 		log.Fatal(err)

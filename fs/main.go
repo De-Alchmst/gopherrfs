@@ -11,27 +11,40 @@ import (
 )
 
 
-type FS struct{}
+type filesystem struct{}
 // used for static api
-type Root struct{}
-type Dir struct{}
-type File struct{}
+type root struct{}
+type Dir struct{
+	Inode uint64
+	Name string
+	Type fuse.DirentType
+
+	Contents []fs.Node
+}
+type File struct{
+	Inode uint64
+	Name string
+	Type fuse.DirentType
+
+	Writer func([]byte) error
+	Reader func() ([]byte, error)
+}
 // used for resolving
-type Path struct {
+type path struct {
 	FullPath string
 }
 
 
 var (
-	root = Root{}
+	rootDir = root{}
 )
 
 
-func MountFS(mountpoint string) error {
+func MountFS(mountpoint, fsName, fsSubtype string) error {
 	c, err := fuse.Mount(
 		mountpoint,
-		fuse.FSName("gopherrfs"),
-		fuse.Subtype("gopherrfs"),
+		fuse.FSName(fsName),
+		fuse.Subtype(fsSubtype),
 	)
 
 	if err != nil {
@@ -45,7 +58,7 @@ func MountFS(mountpoint string) error {
 	// Start serving in a goroutine
 	serveDone := make(chan error, 1)
 	go func() {
-		serveDone <- fs.Serve(c, FS{})
+		serveDone <- fs.Serve(c, filesystem{})
 	}()
 
 	select {
@@ -60,23 +73,23 @@ func MountFS(mountpoint string) error {
 }
 
 
-func (FS) Root() (fs.Node, error) {
-	return root, nil
+func (filesystem) Root() (fs.Node, error) {
+	return rootDir, nil
 }
 
 
-func (Root) Attr(ctx context.Context, a *fuse.Attr) error {
+func (root) Attr(ctx context.Context, a *fuse.Attr) error {
 	a.Inode = 1
 	a.Mode = os.ModeDir | 0o555
 	return nil
 }
 
 
-func (Root) Lookup(ctx context.Context, name string) (fs.Node, error) {
+func (root) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	return newPath(name), nil
 }
 
 
-func (Root) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+func (root) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	return []fuse.Dirent{}, nil
 }

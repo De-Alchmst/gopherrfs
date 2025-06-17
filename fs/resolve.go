@@ -14,7 +14,7 @@ import (
 )
 
 
-type Entry struct {
+type entry struct {
 	Contents []byte
 	TTL int64
 	Status int
@@ -23,37 +23,34 @@ type Entry struct {
 
 
 const (
-	EntryStatusOK = iota
-	EntryStatusFailed
-	EntryStatusProcessing
-)
-
-const (
-	DefaultTTL = 60 * 60
+	entryStatusOK = iota
+	entryStatusFailed
+	entryStatusProcessing
 )
 
 
 var (
-	Entries = map[string]*Entry{}
+	DefaultTTL int64 = 60 * 60
+	entries = map[string]*entry{}
 )
 
 
-func (p Path) Attr(ctx context.Context, a *fuse.Attr) error {
-	entry, ok := Entries[p.FullPath]
+func (p path) Attr(ctx context.Context, a *fuse.Attr) error {
+	ent, ok := entries[p.FullPath]
 	// File
 	if ok { 
-		entry.Using += 1
+		ent.Using += 1
 
-		for entry.Status == EntryStatusProcessing {
+		for ent.Status == entryStatusProcessing {
 			time.Sleep(10 * time.Millisecond)
 		}
 
 		a.Inode = 1
 		a.Mode = os.ModeIrregular | 0o770
-		a.Size = uint64(len(entry.Contents))
+		a.Size = uint64(len(ent.Contents))
 
-		entry.TTL = DefaultTTL
-		entry.Using -= 1
+		ent.TTL = DefaultTTL
+		ent.Using -= 1
 
 	// Directory
 	} else {
@@ -65,89 +62,89 @@ func (p Path) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 
-func (p Path) ReadAll(ctx context.Context) ([]byte, error) {
-	entry, ok := Entries[p.FullPath]
+func (p path) ReadAll(ctx context.Context) ([]byte, error) {
+	ent, ok := entries[p.FullPath]
 	if !ok {
 		return nil, fuse.ENOENT
 	}
 
-	entry.Using += 1
-	for entry.Status == EntryStatusProcessing {
+	ent.Using += 1
+	for ent.Status == entryStatusProcessing {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	entry.TTL = DefaultTTL
-	entry.Using -= 1
-	return entry.Contents, nil
+	ent.TTL = DefaultTTL
+	ent.Using -= 1
+	return ent.Contents, nil
 }
 
 
-func (p Path) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	entry, ok := Entries[p.FullPath]
+func (p path) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
+	ent, ok := entries[p.FullPath]
 	if !ok {
 		return fuse.ENOENT
 	}
 
-	for entry.Status == EntryStatusProcessing {
+	for ent.Status == entryStatusProcessing {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	entry.Using += 1
+	ent.Using += 1
 
-	fuseutil.HandleRead(req, resp, entry.Contents)
+	fuseutil.HandleRead(req, resp, ent.Contents)
 
-	entry.TTL = DefaultTTL
-	entry.Using -= 1
+	ent.TTL = DefaultTTL
+	ent.Using -= 1
 
 	return nil
 }
 
 
-func (Path) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+func (path) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	return []fuse.Dirent{}, nil
 }
 
 
-func (p Path) Lookup(ctx context.Context, name string) (fs.Node, error) {
+func (p path) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	return newPath(filepath.Join(p.FullPath, name)), nil
 }
 
 
-func newPath(path string) Path {
-	if path[len(path)-1] == ':' {
-		handleEntry(path)
+func newPath(name string) path {
+	if name[len(name)-1] == ':' {
+		handleEntry(name)
 	}
 
-	return Path{FullPath: path}
+	return path{FullPath: name}
 }
 
 
-func handleEntry(path string) {
-	entry, ok := Entries[path]
+func handleEntry(name string) {
+	ent, ok := entries[name]
 
 	if !ok {
-		Entries[path] = &Entry{
+		entries[name] = &entry{
 			Contents: []byte{},
 			TTL: DefaultTTL,
-			Status: EntryStatusProcessing,
+			Status: entryStatusProcessing,
 			Using: 0,
 		}
 
-		go fillEntry(Entries[path], path)
+		go fillEntry(entries[name], name)
 
 	} else {
-		entry.TTL = DefaultTTL
+		ent.TTL = DefaultTTL
 	}
 }
 
 
-func fillEntry(entry *Entry, path string) {
-	data, err := gopher.FetchData(path[:len(path)-1]) // Remove trailing colon
+func fillEntry(ent *entry, name string) {
+	data, err := gopher.FetchData(name[:len(name)-1]) // Remove trailing colon
 	if err != nil {
-		entry.Status = EntryStatusFailed
-		return
+		ent.Status = entryStatusFailed
+	} else {
+		ent.Status = entryStatusOK
 	}
 
-	entry.Contents = data
-	entry.Status = EntryStatusOK
+	ent.Contents = data
 }
