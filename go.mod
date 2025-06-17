@@ -2,8 +2,6 @@ module gopherrfs
 
 go 1.22.2
 
-replace github.com/de-alchsmt/rfs => ../rfs
-
 require git.mills.io/prologic/go-gopher v0.0.0-20220331140345-72e36e5710a1
 
 require (
