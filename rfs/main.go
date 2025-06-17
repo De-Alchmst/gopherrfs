@@ -1,4 +1,4 @@
-package fs
+package rfs
 
 import (
 	"fmt"
@@ -10,6 +10,12 @@ import (
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 )
+
+
+type ProtocolAPI interface {
+	Read(address string, modifiers []string) ([]byte, error)
+	Write(address string, modifiers []string, data []byte) ([]byte, error)
+}
 
 
 type filesystem struct{}
@@ -49,6 +55,7 @@ type DirNode interface {
 
 
 var (
+	protocolAPI ProtocolAPI
 	rootDir = root{}
 	confDir  = &Dir{
 		Inode: 0,
@@ -71,7 +78,12 @@ var (
 )
 
 
-func MountFS(mountpoint, fsName, fsSubtype string) error {
+func MountFS(mountpoint, fsName, fsSubtype string, confs []DirNode, api ProtocolAPI) error {
+	protocolAPI = api
+	for _, node := range confs {
+		confDir.Contents = append(confDir.Contents, node)
+	}
+
 	c, err := fuse.Mount(
 		mountpoint,
 		fuse.FSName(fsName),

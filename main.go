@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"gopherrfs/fs"
+	"gopherrfs/rfs"
 )
 
 
@@ -26,7 +26,7 @@ func main() {
 	}
 	mountpoint := flag.Arg(0)
 
-	err := fs.MountFS(mountpoint, "gopherrfs", "gopherrfs")
+	err := rfs.MountFS(mountpoint, "gopherrfs", "gopherrfs",[]rfs.DirNode{}, API{})
 
 	if err != nil {
 		log.Fatal(err)

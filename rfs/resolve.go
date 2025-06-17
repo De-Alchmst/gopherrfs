@@ -1,16 +1,15 @@
-package fs
+package rfs
 
 import (
 	"path/filepath"
 	"context"
+	"strings"
 	"time"
 	"os"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 	"bazil.org/fuse/fuseutil"
-
-	"gopherrfs/gopher"
 )
 
 
@@ -19,6 +18,7 @@ type entry struct {
 	TTL int64
 	Status int
 	Using int
+	Err error
 }
 
 
@@ -39,10 +39,15 @@ func (p path) Attr(ctx context.Context, a *fuse.Attr) error {
 	ent, ok := entries[p.FullPath]
 	// File
 	if ok { 
-		ent.Using += 1
 
+		ent.Using += 1
 		for ent.Status == entryStatusProcessing {
 			time.Sleep(10 * time.Millisecond)
+		}
+
+		if ent.Status == entryStatusFailed {
+			ent.Using -= 1
+			return ent.Err
 		}
 
 		a.Inode = 1
@@ -75,7 +80,10 @@ func (p path) ReadAll(ctx context.Context) ([]byte, error) {
 
 	ent.TTL = DefaultTTL
 	ent.Using -= 1
-	return ent.Contents, nil
+	if ent.Status == entryStatusOK {
+		return ent.Contents, nil
+	}
+	return nil, ent.Err
 }
 
 
@@ -85,11 +93,14 @@ func (p path) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadRe
 		return fuse.ENOENT
 	}
 
+	ent.Using += 1
 	for ent.Status == entryStatusProcessing {
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	ent.Using += 1
+	if ent.Status == entryStatusFailed {
+		return ent.Err
+	}
 
 	fuseutil.HandleRead(req, resp, ent.Contents)
 
@@ -139,12 +150,29 @@ func handleEntry(name string) {
 
 
 func fillEntry(ent *entry, name string) {
-	data, err := gopher.FetchData(name[:len(name)-1]) // Remove trailing colon
+	data, err := protocolAPI.Read(processPath(name))
 	if err != nil {
 		ent.Status = entryStatusFailed
+		ent.Err = err
 	} else {
 		ent.Status = entryStatusOK
 	}
 
 	ent.Contents = data
+}
+
+
+func processPath(path string) (string, []string) {
+	mods := []string{}
+	for path[0] == ':' {
+		splits := strings.SplitN(path, "/", 2)
+		if len(splits) == 1 {
+			break
+		}
+
+		mods = append(mods, splits[0])
+		path = splits[1]
+	}
+
+	return path[:len(path)-1], mods
 }
