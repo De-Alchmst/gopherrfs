@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"context"
 	"os"
 	"syscall"
@@ -85,10 +86,18 @@ func (f File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 
 func (f File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	original, err := f.OnRead()
+	if err != nil {
+		original = []byte{}
+	}
+
+	contents := make([]byte, len(original))
+	copy(contents, original)
+
 	return fileHandle{
 		Parent:	  &f,
 		Inode:    f.Inode,
-		Contents: []byte{},
+		Contents: &contents,
 	}, nil
 }
 
@@ -103,13 +112,35 @@ func (h fileHandle) ReadAll(ctx context.Context) ([]byte, error) {
 
 
 func (h fileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	contents, err := h.Parent.OnRead()
-	if err != nil {
-		return err
-	}
-
-	fuseutil.HandleRead(req, resp, contents)
+	fuseutil.HandleRead(req, resp, *h.Contents)
 	return nil
 }
 
 
+func (h fileHandle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
+	fileLen := len(*h.Contents)
+	reqLen  := len(req.Data)
+	spaceDelta := reqLen - fileLen + int(req.Offset) 
+	fmt.Println(req.Offset, " ", string(req.Data), " ", spaceDelta)
+	
+	if spaceDelta > 0 {
+		oldContents := *h.Contents
+		*h.Contents = make([]byte, fileLen + spaceDelta)
+		copy(*h.Contents, oldContents)
+		fmt.Println("Resized contents to", len(*h.Contents), "bytes: ", string(*h.Contents))
+	}
+
+	copy((*h.Contents)[req.Offset:], req.Data)
+	fmt.Println("Wrote data to contents: ", string(*h.Contents))
+	resp.Size = len(req.Data)
+	return nil
+}
+
+
+func (h fileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) error {
+	fmt.Println("Wrote data to contents: ", string(*h.Contents))
+	if len(*h.Contents) != 0 {
+		h.Parent.OnWrite(*h.Contents)
+	}
+	return nil
+}

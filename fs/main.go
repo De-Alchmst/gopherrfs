@@ -36,7 +36,9 @@ type path struct {
 type fileHandle struct {
 	Parent *File
 	Inode uint64
-	Contents []byte
+	// needs to be pointer, so that it can be resized
+	// because fileHandle is copied by value
+	Contents *[]byte
 }
 
 type DirNode interface {
@@ -57,6 +59,7 @@ var (
 				Name: "flush",
 				OnWrite: func(data []byte) error {
 					fmt.Println("Flushing entries...")
+					fmt.Println(string(data))
 					return nil
 				},
 				OnRead: func() ([]byte, error) {
