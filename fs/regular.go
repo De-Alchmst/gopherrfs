@@ -86,9 +86,11 @@ func (f File) Attr(ctx context.Context, a *fuse.Attr) error {
 
 
 func (f File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
-	original, err := f.OnRead()
-	if err != nil {
-		original = []byte{}
+	original := []byte{}
+
+	// Truncate sometimes
+	if req.Flags&fuse.OpenAppend != 0 && req.Flags&fuse.OpenWriteOnly != 0 && req.Flags&fuse.OpenTruncate == 0 {
+		original, _ = f.OnRead()
 	}
 
 	contents := make([]byte, len(original))
