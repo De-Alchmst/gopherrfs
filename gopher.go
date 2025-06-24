@@ -10,6 +10,7 @@ import (
 type API struct {}
 
 func (API) Read(address string, modifiers []string) ([]byte, error) {
+	// :nop handeled by rfs
 	if len(modifiers) > 0 {
 		return []byte(""), errors.New(fmt.Sprintf("unsuppordet modifier: %s", modifiers[0]))
 	}
@@ -30,3 +31,6 @@ func (API) Read(address string, modifiers []string) ([]byte, error) {
 func (API) Write(address string, modifiers []string, data []byte) ([]byte, error) {
 	return []byte(""), errors.New("not applicable")
 }
+
+func (API) FlushAll() {}
+func (API) FlushResource(_ string, _ []string) {}
