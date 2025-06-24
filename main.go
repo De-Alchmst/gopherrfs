@@ -11,7 +11,7 @@ import (
 
 
 func usage() {
-	fmt.Println("Usage: gopherrfs <mountpoint>")
+	fmt.Println("Usage: gopherrfs [flags] <mountpoint>")
 	flag.PrintDefaults()
 }
 
